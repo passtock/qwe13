@@ -1,8 +1,8 @@
-# RealSense 3대 기반 데이터 수집 및 ACT 모델 학습 가이드
+# RealSense 3대 기반 데이터 수집 및 ACT 모델 학습 가이드 (Type E: 증강형)
 
 리얼센스(RealSense) 3대를 사용하여 데이터를 수집하고 학습(ACT 모델)을 진행하는 전체 과정을 정리한 가이드입니다. 
 
-리얼센스는 고해상도 및 깊이 데이터를 지원하는 고급 카메라이기 때문에, 3대를 동시에 사용할 경우 **대역폭과 인코딩 부하를 관리**하는 것이 가장 중요합니다.
+4팀이 사용하실 **타입 E (증강형)** 학습 소스에 맞춰 작성되었습니다.
 
 ---
 
@@ -57,9 +57,9 @@ lerobot-record \
 
 ---
 
-## 3단계: 모델 학습 (Train)
+## 3단계: 모델 학습 (Train) - 타입 E (증강)
 
-데이터 수집이 완료되면, ACT 모델을 이용해 로봇을 학습시킵니다. 팀별 학습 소스 중 가장 범용적인 **타입 B (원본 안정형, 자동 Batch 최적화)** 명령어를 추천합니다.
+데이터 수집이 완료되면, ACT 모델을 이용해 로봇을 학습시킵니다. 4팀이 선택하신 **타입 E (증강형)** 명령어입니다. 데이터의 다양성을 높여주는 `image_transforms` 옵션이 켜져 있는 것이 특징입니다.
 
 먼저, 환경 변수를 설정하거나 쉘 스크립트 파일 최상단에 추가하여 실행하세요. `REPO_ID`는 수집 단계에서 입력한 값과 일치해야 합니다.
 
@@ -67,23 +67,17 @@ lerobot-record \
 # 환경 변수 설정
 export REPO_ID="data/my_task_3rs"
 export DATASET_ROOT="여기에_데이터셋_저장경로_입력"
-export OUTPUT_DIR="outputs/act_typeB"
+export OUTPUT_DIR="outputs/act_typeE"
 
-# GPU VRAM에 따른 Batch Size 자동 설정
-TOTAL_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
-if   [ "$TOTAL_MB" -ge 20000 ]; then BATCH_SIZE=32
-elif [ "$TOTAL_MB" -ge 11000 ]; then BATCH_SIZE=24
-else BATCH_SIZE=16; fi
-
-# 학습 명령어 실행
+# 학습 명령어 실행 (Type E는 고정 Batch 48을 권장합니다)
 PYTORCH_ALLOC_CONF=expandable_segments:True lerobot-train \
   --policy.type=act \
   --dataset.repo_id="${REPO_ID}" \
   --dataset.root="${DATASET_ROOT}" \
   --output_dir="${OUTPUT_DIR}" \
-  --job_name=act_typeB_batch32 \
+  --job_name=act_typeE_augment \
   --policy.device=cuda \
-  --batch_size="${BATCH_SIZE}" \
+  --batch_size=48 \
   --num_workers=4 \
   --steps=80000 \
   --save_freq=10000 \
@@ -100,17 +94,18 @@ PYTORCH_ALLOC_CONF=expandable_segments:True lerobot-train \
   --policy.n_heads=8 \
   --policy.use_vae=true \
   --policy.kl_weight=10.0 \
-  --policy.optimizer_lr=1e-5 \
-  --policy.optimizer_lr_backbone=1e-5 \
+  --policy.optimizer_lr=1.2e-5 \
+  --policy.optimizer_lr_backbone=1.2e-5 \
   --policy.optimizer_weight_decay=1e-4 \
-  --dataset.image_transforms.enable=false \
+  --dataset.image_transforms.enable=true \
+  --dataset.image_transforms.max_num_transforms=3 \
   --policy.push_to_hub=false \
   --wandb.enable=false
 ```
 
 ---
 
-### 핵심 요약
-1. **장비 확인**: `lerobot-find-cameras` 및 `lerobot-find-port` 로 장비 정보를 파악하세요.
-2. **수집 최적화**: 리얼센스 3대의 대역폭 부담을 줄이기 위해 **h264 인코딩**, **비스트리밍(streaming_encoding=false)**, **15초 웜업(warmup_s: 15)** 옵션을 사용합니다.
-3. **학습 실행**: 획득한 데이터를 바탕으로 지정된 경로와 배치 크기에 맞춰 `lerobot-train`을 실행합니다.
+### 타입 E (증강) 변경점 요약
+1. **학습 배치 크기**: `batch_size=48` (VRAM 용량이 부족할 경우 상황에 맞게 32 등으로 조절하세요)
+2. **학습률 조정**: `optimizer_lr=1.2e-5`, `optimizer_lr_backbone=1.2e-5`로 변경
+3. **이미지 증강(Augmentation) 켜기**: `dataset.image_transforms.enable=true`, `dataset.image_transforms.max_num_transforms=3` 옵션 추가
